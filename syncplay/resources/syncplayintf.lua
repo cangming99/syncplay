@@ -768,7 +768,22 @@ end
 -- Run the current command and clear the line (Enter)
 function handle_enter()
     if not repl_active then
-        set_active(true)
+        -- Use mp.input for IME support (mpv 0.38+)
+        local input_ok, input = pcall(require, "mp.input")
+        if input_ok and input then
+            input.get({
+                prompt = '> ',
+                submit = function(text)
+                    if text and text ~= '' then
+                        text = string.gsub(text,"\\", "\\\\")
+                        text = string.gsub(text,"\"", "\\\"")
+                        mp.command('print-text "<chat>'..text..'</chat>"')
+                    end
+                end
+            })
+        else
+            set_active(true)
+        end
         return
     end
     set_active(false)
