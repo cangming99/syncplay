@@ -15,3 +15,7 @@ dist.7z
 !.appveyor.yml
 !.github
 __pycache__
+
+# local agent/tooling files
+AGENTS.md
+CLAUDE.md
