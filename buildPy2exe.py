@@ -738,8 +738,16 @@ common_info = dict(
     description='Syncplay',
 )
 
+# List the syncplay packages explicitly instead of relying on setuptools'
+# flat-layout auto discovery, which would otherwise pick up unrelated top-level
+# directories living in the checkout (e.g. a build virtualenv) and abort the
+# build with "Multiple top-level packages discovered in a flat-layout".
+from setuptools import find_packages
+packages = find_packages(include=['syncplay', 'syncplay.*'])
+
 info = dict(
     common_info,
+    packages=packages,
     windows=[{
         "script": "syncplayClient.py",
         "icon_resources": [(1, "syncplay\\resources\\icon.ico")],
