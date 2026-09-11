@@ -54,6 +54,13 @@ local assdraw = require "mp.assdraw"
 
 local opt = require 'mp.options'
 
+-- Use mp.input.get() for chat input when available (mpv 0.38+). It supports IME
+-- composition, unlike the key binding based REPL below. pcall() keeps older mpv
+-- versions working: requiring a missing module raises instead of returning nil.
+local input_ok, mp_input = pcall(require, "mp.input")
+local has_mp_input = input_ok and mp_input ~= nil
+local using_native_input = false
+
 local repl_active = false
 local insert_mode = false
 local line = ''
@@ -586,6 +593,15 @@ end
 -- Show the repl if hidden and replace its contents with 'text'
 -- (script-message-to repl type)
 function show_and_type(text)
+    -- With mp.input available, chat input always goes through the native input
+    -- box, so don't activate the legacy REPL in parallel.
+    if has_mp_input then
+        if not using_native_input then
+            open_native_input()
+        end
+        return
+    end
+
     text = text or ''
 
     line = text
@@ -830,25 +846,44 @@ function maybe_exit()
     end
 end
 
+-- Send a chat line to the Python client via print-text
+function send_chat_line(text)
+    if text == nil or text == '' then
+        return
+    end
+    text = string.gsub(text, "\\", "\\\\")
+    text = string.gsub(text, "\"", "\\\"")
+    mp.command('print-text "<chat>'..text..'</chat>"')
+end
+
+-- Open the native text input box (mpv 0.38+), which supports IME composition
+-- for Chinese, Japanese, Korean and other input methods
+function open_native_input()
+    using_native_input = true
+    last_chat_time = mp.get_time() -- keep chat messages showing while entering input
+    mp_input.get({
+        prompt = opts['inputPromptStartCharacter'] .. " ",
+        submit = function(text)
+            using_native_input = false
+            send_chat_line(text)
+        end,
+        closed = function()
+            using_native_input = false
+        end,
+    })
+end
+
 -- Run the current command and clear the line (Enter)
 function handle_enter()
-    if not repl_active then
-        -- Use mp.input for IME support (mpv 0.38+)
-        local input_ok, input = pcall(require, "mp.input")
-        if input_ok and input then
-            input.get({
-                prompt = '> ',
-                submit = function(text)
-                    if text and text ~= '' then
-                        text = string.gsub(text,"\\", "\\\\")
-                        text = string.gsub(text,"\"", "\\\"")
-                        mp.command('print-text "<chat>'..text..'</chat>"')
-                    end
-                end
-            })
-        else
-            set_active(true)
+    if has_mp_input then
+        if not using_native_input then
+            open_native_input()
         end
+        return
+    end
+
+    if not repl_active then
+        set_active(true)
         return
     end
     set_active(false)
@@ -857,9 +892,7 @@ function handle_enter()
         return
     end
     key_hints_enabled = false
-    line = string.gsub(line,"\\", "\\\\")
-    line = string.gsub(line,"\"", "\\\"")
-    mp.command('print-text "<chat>'..line..'</chat>"')
+    send_chat_line(line)
     clear()
 end
 
